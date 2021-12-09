@@ -1,4 +1,5 @@
 .vscode
 .cache.db
 .gerrit.config.json
+.temp
 __pycache__
