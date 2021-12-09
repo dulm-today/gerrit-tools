@@ -339,6 +339,10 @@ class GerritTools:
                                    config['verbose_http'],
                                    config.get('only_cache'))
 
+    def __md_escape(self, s: str):
+        return s.replace("[", "\\[").replace("]", "\\]").replace(
+            "(", "\\(").replace(")", "\\)")
+
     def cherry_pick_list(self,
                          project: str,
                          branch: str,
@@ -357,27 +361,28 @@ class GerritTools:
 
         for change in changes:
             print("| ", end="")
-            print('<a href="%s">%s</a> - **%s**/%s' %
-                  (self.gerrit.url_for_change(change['_number']),
-                   html.escape(change['subject']), change['revisions'][
-                       change['current_revision']]['commit']['author']['name'],
-                   change['revisions'][change['current_revision']]['commit']
-                   ['committer']['date']),
-                  end='')
+            print(
+                '<a href="%s">%s</a> - **%s**/%s' %
+                (self.gerrit.url_for_change(change['_number']),
+                 self.__md_escape(html.escape(change['subject'])),
+                 change['revisions'][change['current_revision']]['commit']
+                 ['author']['name'], change['revisions']
+                 [change['current_revision']]['commit']['committer']['date']),
+                end='')
             print(" | ", end='')
 
             cherries = self.gerrit.get_change_cherry_pick(change, branch_to)
             for cherry in cherries:
                 if cherry['branch'] != branch_to:
                     continue
-                print(
-                    '<a href="%s">%s</a> - **%s**/%s' %
-                    (self.gerrit.url_for_change(cherry['_number']),
-                     html.escape(cherry['subject']), cherry['revisions']
-                     [cherry['current_revision']]['commit']['author']['name'],
-                     cherry['revisions'][cherry['current_revision']]['commit']
-                     ['committer']['date']),
-                    end='')
+                print('<a href="%s">%s</a> - **%s**/%s' %
+                      (self.gerrit.url_for_change(cherry['_number']),
+                       self.__md_escape(html.escape(cherry['subject'])),
+                       cherry['revisions'][cherry['current_revision']]
+                       ['commit']['author']['name'],
+                       cherry['revisions'][cherry['current_revision']]
+                       ['commit']['committer']['date']),
+                      end='')
                 break
 
             print(" |")
@@ -532,6 +537,6 @@ if __name__ == "__main__":
     gerrit_tools = GerritTools(config)
     args.func(gerrit_tools, args)
 
-    logging.info(
+    logging.debug(
         'Cache match/miss: %d/%d' %
         (gerrit_tools.gerrit.cache_match, gerrit_tools.gerrit.cache_miss))
