@@ -399,7 +399,7 @@ class GerritTools:
         if since is None or since == '':
             since = self.branches.find_since(branch, branch_to)
 
-        logging.debug(msg)('Since %s, until %s' %(since, until))
+        logging.debug('Since %s, until %s' %(since, until))
         changes = self.gerrit.query_changes_between(searches, [], since, until)
 
         logging.debug('Got %d commits' % (len(changes)))
