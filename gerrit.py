@@ -328,16 +328,61 @@ class GerritCached(Gerrit):
         return super().get_change_cherry_pick(change, branch_to)
 
 
+class BranchGraph:
+    config = None
+
+    def __init__(self, config):
+        self.config = config
+
+    def get_since(self, branch: str):
+        time = ''
+        if branch in self.config:
+            if create_time in self.config[branch]:
+                time = self.config[branch]['create_time']
+        if time != '':
+            return time
+        return '1970-01-01 00:00:00'
+
+    def find_since(self, branch: str, branch_to: str):
+        graph_1: List = self.__build_graph(branch)
+        graph_2: List = self.__build_graph(branch_to)
+
+        index = 0
+        while index < len(graph_1) and index < len(graph_2):
+            if graph_1[index]['name'] == graph_2[index]['name'] and \
+                graph_1[index]['time'] == graph_2[index]['time']:
+                index += 1
+            else:
+                break
+
+        if index < len(graph_1):
+            return graph_1[index]['time']
+        elif index < len(graph_2):
+            return graph_2[index]['time']
+        return None
+
+    def __build_graph(self, branch: str):
+        graph = []
+        while branch != '':
+            if branch in self.config:
+                graph.insert(0, { 'name': branch, 'time': self.config[branch]['create_time'] })
+                branch = self.config[branch]['parent']
+            else:
+                break
+        return graph
+
 class GerritTools:
     cache: GerritCache = None
     gerrit: GerritCached = None
+    branches: BranchGraph = None
 
-    def __init__(self, config):
+    def __init__(self, config, branch_config):
         self.cache = GerritCache(config.get('cache'))
         self.gerrit = GerritCached(self.cache, config['host'], config['user'],
                                    config['passwd'], config['insecure'],
                                    config['verbose_http'],
                                    config.get('only_cache'))
+        self.branches = BranchGraph(branch_config)
 
     def __md_escape(self, s: str):
         return s.replace("[", "\\[").replace("]", "\\]").replace(
@@ -351,6 +396,10 @@ class GerritTools:
                          until: str = None):
         searches = ['project:%s' % project, 'branch:%s' % branch, 'is:merged']
 
+        if since is None or since == '':
+            since = self.branches.find_since(branch, branch_to)
+
+        logging.debug(msg)('Since %s, until %s' %(since, until))
         changes = self.gerrit.query_changes_between(searches, [], since, until)
 
         logging.debug('Got %d commits' % (len(changes)))
@@ -396,8 +445,12 @@ class GerritTools:
             'project:%s' % project,
             'branch:%s' % branch, '-is:abandoned'
         ]
+        if since is None or since == '':
+            since = self.branches.get_since(branch)
+
+        info.debug('Since %s, until %s' %(since, until))
         changes = self.gerrit.query_changes_between(searches, [], since, until)
-        logging.debug('Got %d commits' % (len(changes)))
+        info.debug('Got %d commits' % (len(changes)))
 
     @staticmethod
     def __cherry_pick_list(tools, args):
@@ -419,8 +472,10 @@ class GerritTools:
         cmd.add_argument('branch_to', help='Cherry-pick target branch name')
         cmd.add_argument(
             'since',
+            nargs='?',
             help=
-            'Change modified time after(format: 2006-01-02[ 15:04:05[.890])')
+            'Change modified time after(format: 2006-01-02[ 15:04:05[.890])',
+            default='')
         cmd.add_argument(
             'until',
             nargs='?',
@@ -439,7 +494,8 @@ class GerritTools:
             'since',
             nargs='?',
             help=
-            'Change modified time after(format: 2006-01-02[ 15:04:05[.890])')
+            'Change modified time after(format: 2006-01-02[ 15:04:05[.890])',
+            default='')
         cmd.add_argument(
             'until',
             nargs='?',
@@ -449,11 +505,10 @@ class GerritTools:
         cmd.set_defaults(func=GerritTools.__update_cache)
 
 
-def get_conf_file(conf: str):
+def _get_conf_file(conf: str, filename: str):
     path = os.path.dirname(os.path.realpath(__file__))
     dirs = ["./", path, "~/"]
     files = [conf]
-    filename = 'gerrit.config.json'
     for dir in dirs:
         files += [
             os.path.join(dir, filename),
@@ -464,15 +519,22 @@ def get_conf_file(conf: str):
             return f
     return None
 
+def get_conf_file(conf: str):
+    return _get_conf_file(conf, 'gerrit.config.json')
+
+def get_branch_conf_file(conf: str):
+    return _get_conf_file(conf, 'branch.config.json')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument('-c', "--conf", help='Config file')
+    parser.add_argument('-b', '--branch_conf', help='Config file for branch')
     parser.add_argument('-l', "--log", help='Log config file')
     parser.add_argument('-C', '--cache', help='Cache database')
     parser.add_argument('--only_cache',
                         action='store_true',
                         help='Read data from cache only')
+    parser.add_argument('-o', '--out', help='Output file(default: stdout)')
     parser.add_argument('-H', '--host', help='Gerrit host address')
     parser.add_argument('-U',
                         '--user',
@@ -507,6 +569,10 @@ if __name__ == "__main__":
     with open(get_conf_file(args.conf)) as f:
         config.update(json.load(f))
 
+    branch_config = {}
+    with open(get_branch_conf_file(args.branch_conf)) as f:
+        branch_config.update(json.load(f))
+
     if args.host:
         config['host'] = args.host
     if args.user:
@@ -526,6 +592,9 @@ if __name__ == "__main__":
         print('Missing argument: host', file=sys.stderr)
         sys.exit(1)
 
+    if args.out:
+        sys.stdout = open(args.out, 'w')
+
     if args.log:
         logging.config.fileConfig(args.log, disable_existing_loggers=True)
     else:
@@ -534,8 +603,10 @@ if __name__ == "__main__":
                             format='[%(levelname)-5.5s] %(message)s')
         logging.getLogger().setLevel(level)
 
-    gerrit_tools = GerritTools(config)
+    gerrit_tools = GerritTools(config, branch_config)
     args.func(gerrit_tools, args)
+
+    sys.stdout.flush()
 
     logging.debug(
         'Cache match/miss: %d/%d' %
