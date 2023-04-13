@@ -4,3 +4,4 @@
 .branch.config.json
 .temp
 __pycache__
+out
