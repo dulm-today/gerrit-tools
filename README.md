@@ -2,6 +2,22 @@
 
 Tools that can list commits cherry-picked from one branch to another base on Gerrit HTTP API.
 
+## Tutorial
+
+* Config [`gerrit.config.json`](#gerrit_config)
+* Config [`branch.config.json`](#branch_config)
+* Run `gerrit.py` to list the commits that in **branch_from**, or cherry-picked to **branch_to** in markdown format.
+
+  ```shell
+  ./gerrit.py cherry-pick-list <repo> <branch_from> <branch_to> > markdown.md
+  ```
+
+* Use `markdownConverter` convert markdown to html.
+
+  ```shell
+  markdownConverter --html markdown.md
+  ```
+
 ## Usage
 
 Run `./gerrit.py -h` to show help messages:
@@ -46,16 +62,18 @@ Examples:
 This will list all commits since **2021-06-03 10:16:00** in branch **master**, and all commits **cherry-picked** to branch **GRP260X_FP2_GA**(Not all commits in branch GRP260X_FP2_GA).
 
 
-## Configure file
+## Config file
 
-Configure file search paths:
+### <span id='gerrit_config'>Gerrit config file</span>
+
+Config file search paths:
 
 * `./gerrit.config.json`
 * `./.gerrit.config.json`
 * `~/gerrit.config.json`
 * `~/.gerrit.config.json`
 
-Configure file schema:
+Config file example:
 
 ```json
 {
@@ -67,4 +85,52 @@ Configure file schema:
 }
 ```
 
-> Password generated in `http://<gerrit server address>/#/settings/http-password`
+> **Password generated in `https://<gerrit server address>/#/settings/http-password`**
+
+### <span id='branch_config'>Branch config file</span>
+
+Config file search paths:
+
+* `./branch.config.json`
+* `./.branch.config.json`
+* `~/branch.config.json`
+* `~/.branch.config.json`
+
+Config file example:
+
+```json
+{
+    "master": {
+        "parent": "",
+        "create_time": "2019-10-08 00:00:00"
+    },
+    "GRP260X_FP2_GA": {
+        "parent": "master",
+        "create_time": "2021-06-03 00:00:00"
+    },
+    "GRP260X_FP3_GA": {
+        "parent": "master",
+        "create_time": "2023-01-03 00:00:00"
+    },
+    "GHP6XX_master": {
+        "parent": "GRP260X_FP2_GA",
+        "create_time": "2022-01-21 00:00:00"
+    },
+    "GHP6XX_FP1_GA": {
+        "parent": "GHP6XX_master",
+        "create_time": "2022-06-28 00:00:00"
+    },
+    "GSC": {
+        "parent": "GRP260X_FP2_GA",
+        "create_time": "2022-01-21 00:00::00"
+    },
+    "GSC_FP1_GA": {
+        "parent": "GSC",
+        "create_time": "2022-08-19 00:00:00"
+    },
+    "GSC_FP2_GA": {
+        "parent": "GSC",
+        "create_time": "2022-12-22 00:00:00"
+    }
+}
+```
