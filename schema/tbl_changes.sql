@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS "tbl_changes" (
     "change_id"	CHAR(42) NOT NULL,
 	"status"	CHAR(16) NOT NULL,
 	"update_time"	INTEGER NOT NULL,
+	"commit_id" CHAR(42) DEFAULT NULL,
 	"parent"	CHAR(42) DEFAULT NULL,
 	"parent2"	CHAR(42) DEFAULT NULL,
 	"author"	TEXT DEFAULT NULL,
@@ -20,4 +21,8 @@ CREATE INDEX IF NOT EXISTS "tbl_changes_idx_project_branch_change_id" ON "tbl_ch
 	"project",
 	"branch",
 	"change_id"
+);
+
+CREATE INDEX IF NOT EXISTS "tbl_changes_idx_commit_id" ON "tbl_changes" (
+	"commit_id"
 );

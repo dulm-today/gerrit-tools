@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+import datetime
 import json
 import sqlite3
 import ssl
@@ -12,11 +13,23 @@ import requests
 from urllib import request
 from urllib import parse
 from typing import List, Dict, Any
+from dateutil import parser as DateParser
+from dateutil import tz
 
 import argparse
 import logging
 import logging.config
 
+def timestamp(text: str):
+    tm = DateParser.parse(text)
+    if tm.tzinfo is None:
+        tm.replace(tzinfo=datetime.timezone.utc)
+    return time.mktime(tm.utctimetuple())
+
+def utc_to_localtime(text: str):
+    dt_utc = DateParser.parse(text)
+    dt_local = dt_utc.replace(tzinfo=tz.tzutc()).astimezone(tz.tzlocal())
+    return dt_local.isoformat(sep=' ', timespec='seconds')
 
 class Gerrit:
     context = None
@@ -96,9 +109,9 @@ class Gerrit:
         while True:
             range = []
             if since is not None and since != '':
-                range.append('since:"%s"' % since)
+                range.append('since:"%s"' % self.__time_format(since))
             if until is not None and until != '':
-                range.append('until:"%s"' % until)
+                range.append('until:"%s"' % self.__time_format(until))
             res = self.query_changes(search + range, queries)
 
             def change_exist(id):
@@ -114,7 +127,42 @@ class Gerrit:
 
             if len(res) < 500:
                 break
-            until = res[500 - 1]['updated']
+            until = res[500 - 1]['submitted']
+        return changes
+
+    def query_changes_between_branches(self,
+                                    search: List[str],
+                                    queries: List[str],
+                                    branches: List[str],
+                                    since: str = None,
+                                    until: str = None):
+        changes = []
+        parent_id = None
+        for index in range(len(branches) - 1, -1, -1):
+            new_search = search.copy()
+            new_search.append('branch:%s' % (branches[index]))
+
+            res = self.query_changes_between(new_search, queries, since, until)
+
+            def change_exist(id):
+                for ch in changes:
+                    if ch['id'] == id:
+                        return True
+                return False
+
+            last_chg = None
+            for chg in res:
+                if change_exist(chg['id']) or \
+                    (parent_id is not None and chg['current_revision'] != parent_id):
+                    continue
+                if parent_id is not None:
+                    parent_id = None
+                changes.append(chg)
+                last_chg = chg
+
+            if last_chg is not None:
+                until = last_chg['submitted']
+                parent_id = last_chg["revisions"][last_chg["current_revision"]]["commit"]["parents"][0]["commit"]
         return changes
 
     def get_change(self, id: str):
@@ -141,6 +189,10 @@ class Gerrit:
         change = self.get_change(id)
         return self.get_change_cherry_pick(change, branch_to)
 
+    def __time_format(self, text: str):
+        if text is not None and text != '':
+            return DateParser.parse(text).replace(tzinfo=datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        return text
 
 class GerritCache:
     conn: sqlite3.Connection = None
@@ -157,8 +209,7 @@ class GerritCache:
     @staticmethod
     def __timestamp(value: str):
         if value is not None:
-            return time.mktime(
-                time.strptime(value.split('.')[0], '%Y-%m-%d %H:%M:%S'))
+            return timestamp(value)
         return None
 
     def insert(self, change):
@@ -221,6 +272,15 @@ class GerritCache:
         cur.execute(
             'SELECT data from tbl_changes where number = ?',
             (int(number)),
+        )
+        row = cur.fetchone()
+        return json.loads(row[0]) if row else None
+
+    def get_by_commit_id(self, commit_id: str):
+        cur = self.conn.cursor()
+        cur.execute(
+            'SELECT data from tbl_changes where commit_id = ?',
+            (commit_id),
         )
         row = cur.fetchone()
         return json.loads(row[0]) if row else None
@@ -288,8 +348,9 @@ class GerritCached(Gerrit):
     def __cache__(func):
         def __decorated_update_cache(self, *args, **kwargs):
             match = self.cache_match
+            miss  = self.cache_miss
             changes = func(self, *args, **kwargs)
-            if match != self.cache_miss:
+            if miss != self.cache_miss or (match == self.cache_match and miss == self.cache_miss):
                 self.__update_cache(changes)
             return changes
 
@@ -300,6 +361,7 @@ class GerritCached(Gerrit):
 
     @__cache__
     def query_changes(self, search: List[str], queries: List[str] = []):
+        self.cache_miss += 1
         return self.search('/changes/', search, queries)
 
     @__cache__
@@ -324,7 +386,7 @@ class GerritCached(Gerrit):
         if len(changes) > 0 or self.only_cache:
             self.cache_match += 1
             return changes
-        self.cache_miss += 1
+        #self.cache_miss += 1
         return super().get_change_cherry_pick(change, branch_to)
 
 
@@ -355,11 +417,46 @@ class BranchGraph:
             else:
                 break
 
-        if index < len(graph_1):
+        if index < len(graph_1) and index < len(graph_2):
+            # return the smaller one
+            if timestamp(graph_1[index]['time']) <= timestamp(graph_2[index]['time']):
+                return graph_1[index]['time']
+            else:
+                return graph_2[index]['time']
+        elif index < len(graph_1):
             return graph_1[index]['time']
         elif index < len(graph_2):
             return graph_2[index]['time']
         return None
+
+    def get_diff_branches(self, branch: str, branch_to: str):
+        graph_1: List = self.__build_graph(branch)
+        graph_2: List = self.__build_graph(branch_to)
+
+        index = 0
+        while index < len(graph_1) and index < len(graph_2):
+            if graph_1[index]['name'] == graph_2[index]['name'] and \
+                graph_1[index]['time'] == graph_2[index]['time']:
+                index += 1
+            else:
+                break
+
+        if index < len(graph_1) and index < len(graph_2):
+            # return the smaller one
+            if timestamp(graph_1[index]['time']) <= timestamp(graph_2[index]['time']):
+                graph_2[index]['time'] = graph_1[index]['time']
+                return graph_1[index::], graph_2[index::]
+            else:
+                graph_1[index]['time'] = graph_2[index]['time']
+                return graph_1[index::], graph_2[index::]
+        elif index < len(graph_1):
+            return graph_1[index::], []
+        elif index < len(graph_2):
+            return [], graph_2[index::]
+        return None, None
+
+    def get_graph(self, branch: str):
+        return self.__build_graph(branch)
 
     def __build_graph(self, branch: str):
         graph = []
@@ -388,7 +485,7 @@ class GerritTools:
         return s.replace("[", "\\[").replace("]", "\\]").replace(
             "(", "\\(").replace(")", "\\)")
 
-    def cherry_pick_list(self,
+    def cherry_pick_list_2(self,
                          project: str,
                          branch: str,
                          branch_to: str,
@@ -414,9 +511,9 @@ class GerritTools:
                 '<a href="%s">%s</a> - **%s**/%s' %
                 (self.gerrit.url_for_change(change['_number']),
                  self.__md_escape(html.escape(change['subject'])),
-                 change['revisions'][change['current_revision']]['commit']
-                 ['author']['name'], change['revisions']
-                 [change['current_revision']]['commit']['committer']['date']),
+                 change['revisions'][change['current_revision']]['commit']['author']['name'],
+                 utc_to_localtime(change['revisions'][change['current_revision']]['commit']['committer']['date'])
+                 ),
                 end='')
             print(" | ", end='')
 
@@ -427,14 +524,98 @@ class GerritTools:
                 print('<a href="%s">%s</a> - **%s**/%s' %
                       (self.gerrit.url_for_change(cherry['_number']),
                        self.__md_escape(html.escape(cherry['subject'])),
-                       cherry['revisions'][cherry['current_revision']]
-                       ['commit']['author']['name'],
-                       cherry['revisions'][cherry['current_revision']]
-                       ['commit']['committer']['date']),
+                       cherry['revisions'][cherry['current_revision']]['commit']['author']['name'],
+                       utc_to_localtime(cherry['revisions'][cherry['current_revision']]['commit']['committer']['date'])
+                       ),
                       end='')
                 break
 
             print(" |")
+
+    def cherry_pick_list(self,
+                         project: str,
+                         branch: str,
+                         branch_to: str,
+                         since: str = None,
+                         until: str = None):
+        searches = ['project:%s' % project, 'is:merged']
+
+        if since is None or since == '':
+            since = self.branches.find_since(branch, branch_to)
+        logging.debug('Since %s, until %s' %(since, until))
+
+        graph_1 = self.branches.get_graph(branch)
+        graph_2 = self.branches.get_graph(branch_to)
+
+        logging.debug('Branch graph 1: %s' % (graph_1))
+        logging.debug('Branch graph 2: %s' % (graph_2))
+
+        # get src changes
+        branches = [ ]
+        for item in graph_1:
+            branches.append(item['name'])
+
+        changes = self.gerrit.query_changes_between_branches(searches, [], branches, since, until)
+        logging.debug('Got %d commits from %s' % (len(changes), branches))
+
+        # get target changes
+        target_branches = [ ]
+        for item in graph_2:
+            target_branches.append(item['name'])
+
+        target_changes = self.gerrit.query_changes_between_branches(searches, [], target_branches, since, until)
+        logging.debug('Got %d commits from %s' % (len(target_changes), target_branches))
+
+        print("# %s commits cherry pick list" % (project))
+        print("| %s | %s | " % (branch, branch_to))
+        print("|----|----|")
+
+        end = len(changes)
+        for x in range(len(changes) - 1, -1, -1):
+            for y in range(len(target_changes) - 1, -1, -1):
+                if changes[x]['current_revision'] == target_changes[y]['current_revision']:
+                    end = x
+                    break
+
+        logging.debug('End: %d/%d' % (end, len(changes)))
+
+        for index in range(end):
+            change = changes[index]
+
+            print("| ", end="")
+            print(
+                '<a href="%s">%s</a> - **%s**/%s' %
+                (self.gerrit.url_for_change(change['_number']),
+                 self.__md_escape(html.escape(change['subject'])),
+                 change['revisions'][change['current_revision']]['commit']
+                 ['author']['name'], change['revisions']
+                 [change['current_revision']]['commit']['committer']['date']),
+                end='')
+            print(" | ", end='')
+
+            for cherry in target_changes:
+                if change['change_id'] != cherry['change_id'] or \
+                    change['branch'] == cherry['branch']:
+                    continue
+
+                if cherry['branch'] == branch_to:
+                    print('<a href="%s">%s</a> - **%s**/%s' %
+                      (self.gerrit.url_for_change(cherry['_number']),
+                       self.__md_escape(html.escape(cherry['subject'])),
+                       cherry['revisions'][cherry['current_revision']]['commit']['author']['name'],
+                       utc_to_localtime(cherry['revisions'][cherry['current_revision']]['commit']['committer']['date'])),
+                      end='')
+                else:
+                    print('<font color="red">**%s**</font></br> <a href="%s">%s</a> - **%s**/%s' %
+                      (cherry['branch'],
+                       self.gerrit.url_for_change(cherry['_number']),
+                       self.__md_escape(html.escape(cherry['subject'])),
+                       cherry['revisions'][cherry['current_revision']]['commit']['author']['name'],
+                       utc_to_localtime(cherry['revisions'][cherry['current_revision']]['commit']['committer']['date'])),
+                      end='')
+
+            print(" |")
+
 
     def update_cache(self,
                      project: str,
