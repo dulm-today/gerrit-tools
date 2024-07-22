@@ -5,6 +5,7 @@ import sys
 import time
 import datetime
 import json
+import json5
 import sqlite3
 import ssl
 import html
@@ -686,25 +687,25 @@ class GerritTools:
         cmd.set_defaults(func=GerritTools.__update_cache)
 
 
-def _get_conf_file(conf: str, filename: str):
+def _get_conf_file(conf: str, filename: str, ext: List[str] = [ '.json5', '.json' ]):
     path = os.path.dirname(os.path.realpath(__file__))
     dirs = ["./", path, "~/"]
     files = [conf]
     for dir in dirs:
-        files += [
-            os.path.join(dir, filename),
-            os.path.join(dir, '.%s' % filename)
-        ]
+        for e in ext:
+            files += [ os.path.join(dir, '%s%s' % (filename, e)) ]
+        for e in ext:
+            files += [ os.path.join(dir, '.%s%s' % (filename, e)) ]
     for f in files:
         if f and os.path.exists(f):
             return f
     return None
 
 def get_conf_file(conf: str):
-    return _get_conf_file(conf, 'gerrit.config.json')
+    return _get_conf_file(conf, 'gerrit.config')
 
 def get_branch_conf_file(conf: str):
-    return _get_conf_file(conf, 'branch.config.json')
+    return _get_conf_file(conf, 'branch.config')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(add_help=True)
@@ -748,11 +749,11 @@ if __name__ == "__main__":
         'only_cache': False,
     }
     with open(get_conf_file(args.conf)) as f:
-        config.update(json.load(f))
+        config.update(json5.load(f))
 
     branch_config = {}
     with open(get_branch_conf_file(args.branch_conf)) as f:
-        branch_config.update(json.load(f))
+        branch_config.update(json5.load(f))
 
     if args.host:
         config['host'] = args.host
