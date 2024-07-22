@@ -1,0 +1,57 @@
+{
+    // GRP260X
+    "master": {
+        "parent": "",
+        "create_time": "2019-10-08 00:00:00 +0800"
+    },
+    "GRP260X_FP2_GA": {
+        "parent": "master",
+        "create_time": "2021-06-03 00:00:00 +0800"
+    },
+    "GRP260X_FP3_GA": {
+        "parent": "master",
+        "create_time": "2023-01-03 00:00:00 +0800"
+    },
+    "GRP260X_OEM_CMCC_HJQ" : {
+        "parent": "GRP260X_FP3_GA",
+        "create_time": "2023-05-31 00:00:00 +0800"
+    },
+    "GRP260X_FP4_GA": {
+        "parent": "master",
+        "create_time": "2024-07-16 08:30:00 +0800"
+    },
+
+    // GHP6XX
+    "GHP6XX_master": {
+        "parent": "GRP260X_FP2_GA",
+        "create_time": "2022-01-21 00:00:00 +0800"
+    },
+    "GHP6XX_FP1_GA": {
+        "parent": "GHP6XX_master",
+        "create_time": "2022-06-28 00:00:00 +0800"
+    },
+
+    // GSC35X6
+    "GSC": {
+        "parent": "GRP260X_FP2_GA",
+        "create_time": "2022-01-21 00:00::00 +0800"
+    },
+    "GSC_FP1_GA": {
+        "parent": "GSC",
+        "create_time": "2022-08-19 00:00:00 +0800"
+    },
+    "GSC_FP2_GA": {
+        "parent": "GSC",
+        "create_time": "2022-12-22 00:00:00 +0800"
+    },
+
+    // WP8X6
+    "WP80X_master": {
+        "parent": "GRP260X_FP3_GA",
+        "create_time": "2023-06-24 00:00:00 +0800"
+    },
+    "WP8X6_FP1_GA": {
+        "parent": "WP80X_master",
+        "create_time": "2024-03-08 00:00:00 +0800"
+    }
+}

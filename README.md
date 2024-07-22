@@ -4,8 +4,8 @@ Tools that can list commits cherry-picked from one branch to another base on Ger
 
 ## Tutorial
 
-* Config [`gerrit.config.json`](#gerrit_config)
-* Config [`branch.config.json`](#branch_config)
+* Config [`gerrit.json5`](#gerrit_config)
+* Config [`branch.json5`](#branch_config)
 * Run `gerrit.py` to list the commits that in **branch_from**, or cherry-picked to **branch_to** in markdown format.
 
   ```shell
@@ -68,14 +68,16 @@ This will list all commits since **2021-06-03 10:16:00** in branch **master**, a
 
 Config file search paths:
 
-* `./gerrit.config.json`
-* `./.gerrit.config.json`
-* `~/gerrit.config.json`
-* `~/.gerrit.config.json`
+* `./gerrit.json5`
+* `./config/gerrit.json5`
+* `{Path of gerrit.py}/gerrit.json5`
+* `{Path of gerrit.py}/config/gerrit.json5`
+* `~/.config/gerrit-tools/gerrit.json5`
 
 Config file example:
 
 ```json
+[
 {
     "host": "192.168.120.246",
     "user": "user",
@@ -83,6 +85,7 @@ Config file example:
     "verbose": 0,
     "insecure": true
 }
+]
 ```
 
 > **Password generated in `https://<gerrit server address>/#/settings/http-password`**
@@ -91,10 +94,11 @@ Config file example:
 
 Config file search paths:
 
-* `./branch.config.json`
-* `./.branch.config.json`
-* `~/branch.config.json`
-* `~/.branch.config.json`
+* `./branch.json5`
+* `./config/branch.json5`
+* `{Path of gerrit.py}/branch.json5`
+* `{Path of gerrit.py}/config/branch.json5`
+* `~/.config/gerrit-tools/branch.json5`
 
 Config file example:
 

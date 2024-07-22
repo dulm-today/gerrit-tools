@@ -689,23 +689,33 @@ class GerritTools:
 
 def _get_conf_file(conf: str, filename: str, ext: List[str] = [ '.json5', '.json' ]):
     path = os.path.dirname(os.path.realpath(__file__))
-    dirs = ["./", path, "~/"]
-    files = [conf]
-    for dir in dirs:
+
+    files = []
+    dirs = ["./", path]
+    subdirs = ["", "config"]
+
+    def add_conf_file(dir):
+        nonlocal files
         for e in ext:
             files += [ os.path.join(dir, '%s%s' % (filename, e)) ]
-        for e in ext:
-            files += [ os.path.join(dir, '.%s%s' % (filename, e)) ]
+
+    if conf:
+        files.append(conf)
+    for dir in dirs:
+        for sub in subdirs:
+            add_conf_file(os.path.join(dir, sub))
+    add_conf_file(os.path.join(os.getenv('HOME'), ".config/gerrit-tools"))
+
     for f in files:
         if f and os.path.exists(f):
             return f
     return None
 
 def get_conf_file(conf: str):
-    return _get_conf_file(conf, 'gerrit.config')
+    return _get_conf_file(conf, 'gerrit')
 
 def get_branch_conf_file(conf: str):
-    return _get_conf_file(conf, 'branch.config')
+    return _get_conf_file(conf, 'branch')
 
 def load_gerrit_conf(config: dict, conf, args):
     if isinstance(conf, list):
