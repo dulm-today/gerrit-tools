@@ -707,6 +707,18 @@ def get_conf_file(conf: str):
 def get_branch_conf_file(conf: str):
     return _get_conf_file(conf, 'branch.config')
 
+def load_gerrit_conf(config: dict, conf, args):
+    if isinstance(conf, list):
+        if len(conf) < 1:
+            raise RuntimeError('Invalid gerrit config')
+        for c in conf:
+            if c['host'] == args.host:
+                config.update(c)
+                return
+        config.update(conf[0])
+    else:
+        config.update(conf)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument('-c', "--conf", help='Config file')
@@ -749,7 +761,8 @@ if __name__ == "__main__":
         'only_cache': False,
     }
     with open(get_conf_file(args.conf)) as f:
-        config.update(json5.load(f))
+        conf = json5.load(f)
+        load_gerrit_conf(config, conf, args)
 
     branch_config = {}
     with open(get_branch_conf_file(args.branch_conf)) as f:
